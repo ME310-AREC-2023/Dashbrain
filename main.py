@@ -2,9 +2,11 @@ from influxdb_client import InfluxDBClient
 from datetime import datetime
 from dateutil import tz
 import pandas as pd
+import os
 
 pd.options.mode.chained_assignment = None  # default='warn'
 from sqlalchemy import create_engine
+# dependent on pymysql
 
 # Named to avoid errors
 noerrorooo = {
@@ -53,8 +55,9 @@ def inPull(start):
     '''
 
     # Execute the query
+    current_time = datetime.now()
+    print('pulling started at '+str(current_time)+'. . .')
     result = query_api.query(query)
-
     # Print the result
     data = []
     for table in result:
@@ -65,7 +68,13 @@ def inPull(start):
     df = pd.DataFrame(data)
 
     # Save DataFrame to a CSV file
-    df.to_csv('ind.csv', index=False)
+    if os.path.exists('new_inf_file.csv'):
+        print('appending data')
+        df.to_csv('ind.csv', mode='a', index=False, header=False)
+    else:
+        # File doesn't exist, perform another operation
+        df.to_csv('ind.csv', index=False)
+
 
 
 def fetch_data(csv_file):
@@ -332,22 +341,35 @@ sensors = {}
 
 # Iterate through sensors
 
-
 # Call function
-start_time = '2023-04-20 23:20:33.355+00:00'
-inPull(start_time)
-csv_file = pd.read_csv("ind.csv")  # Replace with influx db import system
-new_csv = fetch_data("ind.csv")
-new_csv = new_csv.reset_index(drop=True)
-new_csv.to_csv('new_inf_file.csv', index=False)
-dataSet = pd.read_csv('new_inf_file.csv')
-dataSet['time'] = pd.to_datetime(dataSet['time'])
-sids = (dataSet['topic'].unique()).tolist()
-for j in sids:
-    if j not in sensors:
-        sensors[j] = Sensor(j)
-    new_data = dataSet[(dataSet['topic'] == j)]
-    sensors[j].scan(new_data)
-sqlPush()
+while True:
+    if os.path.exists('new_inf_file.csv'):
+        stgen = pd.read_csv('new_inf_file.csv')
+        # Perform your operations here
+        start_time = stgen['time'].iloc[-1]
+        print(stgen['time'].iloc[-1])
+    else:
+        # File doesn't exist, perform another operation
+        start_time = '2023-04-20 23:20:33.355+00:00'
+        print('2023-04-20 23:20:33.355+00:00')
+    print('started')
+    inPull(start_time)
+    current_time = datetime.now()
+    print('pull completed at '+str(current_time))
+    csv_file = pd.read_csv("ind.csv")  # Replace with influx db import system
+    new_csv = fetch_data("ind.csv")
+    new_csv = new_csv.reset_index(drop=True)
+    new_csv.to_csv('new_inf_file.csv', index=False)
+
+    dataSet = pd.read_csv('new_inf_file.csv')
+    dataSet['time'] = pd.to_datetime(dataSet['time'])
+    sids = (dataSet['topic'].unique()).tolist()
+    print('scanning')
+    for j in sids:
+        if j not in sensors:
+            sensors[j] = Sensor(j)
+        new_data = dataSet[(dataSet['topic'] == j)]
+        sensors[j].scan(new_data)
+    sqlPush()
 
 

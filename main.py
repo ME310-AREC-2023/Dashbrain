@@ -217,7 +217,7 @@ class Sensor:
             'location': [location],
             'time': [time],
             'duration': [duration],
-            'severity': [severity],
+            'severity': [round(severity, 2)],
             'active': [active]
         }
         atemp = pd.DataFrame(atemp)

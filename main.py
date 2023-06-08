@@ -5,6 +5,7 @@ import pandas as pd
 import os
 import matplotlib
 import numpy as np
+import time
 
 pd.options.mode.chained_assignment = None  # default='warn'
 from sqlalchemy import create_engine
@@ -20,6 +21,7 @@ iniAlerts = {
 }
 iniAlerts = pd.DataFrame(iniAlerts)
 iniAlerts.to_csv('alerts.csv', index=False)
+
 
 # iniIndexes = {
 #     'location': [],
@@ -43,9 +45,9 @@ def inPull(start):
         # replace with your token
         org='AREC 22-23'  # replace with your organization
     )
-    start_time_str = start
-    start_time = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S.%f%z')
-    f_start_time = start_time.astimezone(tz.UTC).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+    # start_time_str = start
+    # start_time = datetime.strptime(start_time_str, '%Y-%m-%d %H:%M:%S.%f%z')
+    # f_start_time = start_time.astimezone(tz.UTC).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
 
     # Create a query API
     query_api = client.query_api()
@@ -54,7 +56,7 @@ def inPull(start):
 
     # Define your Flux query
     query = f'''from(bucket: "SensorBox-test")
-            |> range(start: {f_start_time})
+            |> range(start: {start})
             |> filter(fn: (r) => r._measurement == "SensorBox")
             |> yield()
     '''
@@ -62,8 +64,16 @@ def inPull(start):
     # Execute the query
     current_time = datetime.now()
     print('pulling started at '+str(current_time)+'. . .')
+
+    last_time_pulled = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    pulltimes = {
+        'time': [last_time_pulled]
+    }
+    pulltimes = pd.DataFrame(pulltimes)
+    pulltimes.to_csv('pulltimes.csv', index=False)
+
     result = query_api.query(query)
-    # Print the result
+    # print the result
     data = []
     for table in result:
         for record in table.records:
@@ -205,8 +215,7 @@ class Sensor:
         if duration == 0:
             return
         severity = 100/(1+np.exp(-np.log10(severity/1000)))
-        print(type + ' alert of severity ' + str(severity) + ' at sensor ' + location + ' & time '
-              + str(time) + ' for ' + str(duration) + ' seconds')
+        print(type + ' alert of severity ' + str(severity) + ' at sensor ' + location + ' & time ' + str(time) + ' for ' + str(duration) + ' seconds')
         self.alerts = pd.read_csv('alerts.csv')
         self.alerts['time'] = pd.to_datetime(self.alerts['time'], format='ISO8601')
         conditions = (self.alerts['time'] == time) & (self.alerts['type'] == type) & (
@@ -437,22 +446,29 @@ sensors = {}
 # Iterate through sensors
 
 # Call function
-#while True:
-for i in range(10):
+while True:
+#for i in range(10):
     ini_time = datetime.now()
-    if os.path.exists('new_inf_file.csv'):
-        stgen = pd.read_csv('new_inf_file.csv')
+    if os.path.exists('pulltimes.csv'):
+        stgen = pd.read_csv('pulltimes.csv')
         # Perform your operations here
         start_time = stgen['time'].iloc[-1]
-        print(stgen['time'].iloc[-1])
     else:
         # File doesn't exist, perform another operation
-        start_time = '2023-05-28 23:20:33.355+00:00'
-        print('2023-05-28 23:20:33.355+00:00')
+        start_time = '2023-06-03T23:20:33Z'
+
+
+    print(start_time)
     print('Started')
     inPull(start_time)
     current_time = datetime.now()
     print('Pull completed at '+str(current_time))
+    filename = "ind.csv"
+    with open(filename, 'r') as f:
+        if not f.read().strip():
+            print(f'File {filename} is empty or contains only whitespace. Waiting for 5 seconds...')
+            time.sleep(5)
+            continue
     csv_file = pd.read_csv("ind.csv")  # Replace with influx db import system
     fetch_data("ind.csv")
     current_time = datetime.now()
@@ -470,5 +486,5 @@ for i in range(10):
     duration = datetime.now()-ini_time
     print('Process completed in ' + str(duration))
     sqlPush()
-
+    time.sleep(25)
 
